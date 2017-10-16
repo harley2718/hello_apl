@@ -122,9 +122,7 @@ if [ ${gflag} != 0 ]; then
     #
     # Edit all "]DISPLAY" into "8⎕CR".
     #
-    ls -l "${tmpfile}"
     sed -e 's/]DISPLAY/8⎕CR/g' < ${1} >> "$tmpfile"
-    ls -l "${tmpfile}"
 
 else
 if [ ${dflag} != 0 ]; then
