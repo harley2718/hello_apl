@@ -1,0 +1,194 @@
+#!/bin/sh
+
+#
+# Extract basename for the apl interpreter wrapper link.
+#
+b=`basename ${0}`
+
+#
+# Calculate hash value of the source script.
+#
+hash=`md5sum ${1} | dd bs=1 count=32 2> /dev/null`
+
+#
+# Prepare for temporary file (which will contain a version of the APL script).
+#
+umask 0177
+tmpfile=/tmp/`basename $0`."$$"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')".${hash}
+#
+echo "temp file: $tmpfile"
+
+#
+# Decode argument 0 (typically the name of a symbolic link pointing to this wrapper).
+# The decoding is based on the basename of the word used to access the wrapper, and
+# using fgrep to find the trigger patterns for different modes/options.
+#
+#   "keeptf" : Keep temporary file.
+#   "off"    : Add ")off" to the end of the temporary script file.
+#   "gapl"   : Use GNU APL (and also convert "]DISPLAY" into "8⎕CR").
+#   "dapl"   : Use Dyalog APL.
+#   "v"      : Verbose (not trying to explicitly supress prologue).
+#   "md5"    : Report hash of wrapped script file.
+#   "color"  : Allow GNU APL to add color to the output.
+#
+
+echo ${b} | fgrep "keeptf" > /dev/null
+if [ $? = 0 ]; then
+    echo KEEP
+    keep_temp_file_flag=1
+else
+    keep_temp_file_flag=0
+    # also setting up a trap to clean under exceptional conditions.
+    trap 'rm -f -- "$tmpfile"' INT TERM HUP EXIT
+fi
+
+add_off_flag=0
+add_md5_hash_flag=0
+
+gflag=0
+g_silent_flag=1
+g_color_flag=0
+
+dflag=0
+d_salt_setup_flag=0
+d_salt_workspace_flag=0
+d_script_flag=0
+
+echo ${b} | fgrep "gapl" > /dev/null
+if [ $? = 0 ]; then
+    gflag=1
+
+    echo ${b} | fgrep "v" > /dev/null
+    if [ $? = 0 ]; then
+        g_silent_flag=0
+    fi
+
+    echo ${b} | fgrep "color" > /dev/null
+    if [ $? = 0 ]; then
+        g_color_flag=1
+    fi
+
+else
+    echo ${b} | fgrep "dapl" > /dev/null
+    if [ $? = 0 ]; then
+        dflag=1
+
+        echo ${b} | fgrep "v" > /dev/null
+        if [ $? = 0 ]; then
+            d_salt_setup_flag=1
+            d_salt_workspace_flag=1
+        else
+            d_script_flag=1
+        fi
+
+    else
+        echo "Error when decoding basename (${b})."
+        exit 1
+    fi
+fi
+
+echo ${b} | fgrep "off" > /dev/null
+if [ $? = 0 ]; then
+    add_off_flag=1
+fi
+
+echo ${b} | fgrep "md5" > /dev/null
+if [ $? = 0 ]; then
+    add_md5_hash_flag=1
+fi
+
+#
+# Create the temporary file as an empty file.
+#
+cat /dev/null > "$tmpfile"
+
+#
+# Conditionally report the MD5 hash value for the source file.
+#
+if [ ${add_md5_hash_flag} != 0 ]; then
+    echo "md5 hash of wrapped source file: ${hash}"
+fi
+
+echo ""
+
+#
+# Start putting content in the temporary file.
+#
+
+if [ ${d_salt_setup_flag} != 0 ]; then
+    echo "{s←⎕NS ⍬ ⋄ 6::_←s.enableSALT ⋄ ⊢s.⎕CY'salt'}⍬" >> "$tmpfile"
+fi
+
+if [ ${gflag} != 0 ]; then
+    #
+    # Edit all "]DISPLAY" into "8⎕CR".
+    #
+    ls -l "${tmpfile}"
+    sed -e 's/]DISPLAY/8⎕CR/g' < ${1} >> "$tmpfile"
+    ls -l "${tmpfile}"
+
+else
+if [ ${dflag} != 0 ]; then
+    #
+    # Use the input as is.
+    #
+    cat ${1} >> "$tmpfile"
+fi
+fi
+
+if [ ${add_off_flag} != 0 ]; then
+    echo ")off" >> "$tmpfile"
+fi
+
+#
+# Run an APL interpreter using the temporary file.
+#
+
+if [ ${gflag} != 0 ]; then
+    # GNU APL
+
+    if [ ${g_silent_flag} != 0 ]; then
+        if [ ${g_color_flag} != 0 ]; then
+            apl --silent -f ${tmpfile}
+            rv=$?
+        else
+            apl --silent --noColor -f ${tmpfile}
+            rv=$?
+        fi
+    else
+        if [ ${g_color_flag} != 0 ]; then
+            apl -f ${tmpfile}
+        else
+            apl --noColor -f ${tmpfile}
+        fi
+        rv=$?
+    fi
+else
+    if [ ${dflag} != 0 ]; then
+        # Dyalog APL
+
+        if [ ${d_salt_workspace_flag} != 0 ]; then
+            dyalog salt < "$tmpfile"
+            rv=$?
+        else
+            if [ ${d_script_flag} != 0 ]; then
+                dyalog -script < "$tmpfile"
+                rv=$?
+            fi
+        fi
+    fi
+fi
+
+# echo "===="
+# cat "$tmpfile"
+# echo "===="
+
+if [ ${keep_temp_file_flag} = 0 ]; then
+    rm "$tmpfile"
+    echo "NOT KEEPING"
+else
+    echo "KEEPING"
+fi
+echo "rv: "${rv}
+exit ${rv}
+
