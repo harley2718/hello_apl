@@ -36,8 +36,8 @@ comma_seventeen ← ,17
 
 ⍝
 ⍝ I also seem to have the opposite problem, when trying to extract a
-⍝ single element from an array, but that element is not is scalar.
-⍝ Here I may want to have some other tool (not the [ ] pair to extract
+⍝ single element from an array, but that element is not a scalar.
+⍝ Here I may want to have some other tool (not the [ ] pair) to extract
 ⍝ a single element and get rid of the outher array level.
 ⍝
 
